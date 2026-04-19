@@ -1,0 +1,15 @@
+{
+  "name": "niamos",
+  "local_port": 55345,
+  "entrypoint": "bun run dev",
+  "publish": {
+    "label": "niamos",
+    "type": "http",
+    "entrypoint": "bun run prod",
+    "published_port": 51516,
+    "env": {
+      "NODE_ENV": "production",
+      "ZO_CLIENT_IDENTITY_TOKEN": "none"
+    }
+  }
+}
