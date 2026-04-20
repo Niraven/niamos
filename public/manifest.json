@@ -1,0 +1,88 @@
+{
+  "name": "niamOS - AI Operating System",
+  "short_name": "niamOS",
+  "description": "A web-based PWA for OpenClaw agent orchestration and AI task automation",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "categories": ["productivity", "utilities"],
+  
+  "icons": [
+    {
+      "src": "/openclaw-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/openclaw-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/openclaw-icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/openclaw-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot-1.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/screenshot-2.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  
+  "shortcuts": [
+    {
+      "name": "New Chat",
+      "short_name": "Chat",
+      "description": "Start a new conversation with an AI agent",
+      "url": "/?tab=chat",
+      "icons": [{ "src": "/openclaw-icon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Agents",
+      "short_name": "Agents",
+      "description": "View active AI agents",
+      "url": "/?tab=agents",
+      "icons": [{ "src": "/openclaw-icon.png", "sizes": "192x192" }]
+    }
+  ],
+  
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": ["text/*", "application/json"]
+        }
+      ]
+    }
+  }
+}
