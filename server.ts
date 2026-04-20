@@ -21,7 +21,8 @@ app.post("/api/zo", async (c) => {
     return c.json({ error: "Zo not authenticated. Please connect Zo in Settings." }, 401);
   }
   try {
-    const body: any = { input, model_name: "byok:7578d2f6-7d32-4c48-9fb3-02cfe6b5a50b" };
+    const body: any = {};
+    if (input) body.input = input;
     if (persona_id) body.persona_id = persona_id;
     if (conversation_id) body.conversation_id = conversation_id;
     const res = await fetch("https://api.zo.computer/zo/ask", {
@@ -30,6 +31,7 @@ app.post("/api/zo", async (c) => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    console.error("[API/zo] raw:", JSON.stringify(data).slice(0, 200));
     return c.json(data);
   } catch (err: any) {
     return c.json({ error: err.message }, 500);

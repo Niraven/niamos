@@ -35,15 +35,11 @@ export const API = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ input, persona_id, conversation_id }),
     }).then(async r => {
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-        throw new Error(err.error || `HTTP ${r.status}`);
-      }
+      if (!r.ok) throw new Error(`API error ${r.status}`);
       const data = await r.json();
-      return {
-        output: data.output || "No response received.",
-        conversation_id: data.conversation_id,
-      };
+      if (!data.output && !data.error) throw new Error("Empty response from Zo");
+      if (data.error) throw new Error(data.error);
+      return { output: data.output, conversation_id: data.conversation_id };
     }),
 
   capture: (content: string) =>
