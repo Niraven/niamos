@@ -24,12 +24,27 @@ export function Home({ setTab }: { setTab: (t: Tab) => void }) {
   }, []);
 
   useEffect(() => {
-    Promise.all([API.getAgents(), API.getMemory(), API.getCalendar()]).then(([ag, mem, cal]) => {
+    Promise.all([API.getAgents(), API.getMemory()]).then(([ag, mem]) => {
       setAgents(ag);
-      setMemory(mem.files?.slice(0, 5) || []);
-      setCalendar(Array.isArray(cal) ? cal.slice(0, 3) : []);
-      setLoading(false);
+      // Memory API returns { working, shared, journal, strategic }
+      // Flatten and deduplicate
+      const all: MemoryFile[] = [
+        ...(mem.working || []),
+        ...(mem.shared || []),
+        ...(mem.journal || []),
+        ...(mem.strategic || []),
+      ];
+      const seen = new Set<string>();
+      const unique = all.filter((f: MemoryFile) => {
+        if (seen.has(f.path)) return false;
+        seen.add(f.path);
+        return true;
+      }).slice(0, 5);
+      setMemory(unique);
     });
+    API.getCalendar().then(cal => {
+      setCalendar(Array.isArray(cal) ? cal.slice(0, 3) : []);
+    }).finally(() => setLoading(false));
   }, []);
 
   const h = new Date().getHours();
@@ -37,7 +52,7 @@ export function Home({ setTab }: { setTab: (t: Tab) => void }) {
   const nextAgent = agents?.scheduled?.find((a: Agent) => a.status === "next");
 
   return (
-    <div className="pb-24 space-y-0">
+    <div className="pb-28 space-y-0">
 
       {/* Header */}
       <div className="px-4 pt-5 pb-4">

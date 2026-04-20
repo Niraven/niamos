@@ -76,8 +76,9 @@ export function Chat() {
   const activeConv = convs.find(c => c.id === activeId) ?? convs[0];
   const persona = PERSONAS.find(p => p.id === activeConv?.personaId) ?? PERSONAS[0];
 
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [activeConv?.messages, loading]);
 
   const updateConv = useCallback((id: string, patch: Partial<Conversation>) => {
@@ -128,18 +129,41 @@ export function Chat() {
     if (!input.trim() || loading || !activeConv) return;
     const userMsg = input.trim();
     setInput("");
-    const name = activeConv.messages.length === 0
-      ? userMsg.slice(0, 40)
-      : activeConv.name;
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
+
+    // Build optimistic message list with user message
     const messages: Message[] = [...activeConv.messages, { role: "user", content: userMsg }];
+    const name = activeConv.messages.length === 0 ? userMsg.slice(0, 40) : activeConv.name;
+
+    // Optimistic update — show user message immediately
     updateConv(activeId, { messages, name });
     setLoading(true);
+
     try {
-      const res = await API.sendChat(userMsg, persona.id);
+      // Pass conversation_id so Zo continues the same thread
+      const res = await API.sendChat(userMsg, persona.id, activeConv.id);
       const next: Message[] = [...messages, { role: "agent", content: res.output }];
       updateConv(activeId, { messages: next });
-    } catch {
-      toast.error("Failed to reach Zo — check connection");
+    } catch (err: any) {
+      // Show error in chat as agent message, then remove after 4s
+      const errMsg = err instanceof Error ? err.message : "Something went wrong";
+      toast.error(errMsg, { duration: 4000 });
+      const next: Message[] = [...messages, { role: "agent", content: `⚠️ ${errMsg}` }];
+      updateConv(activeId, { messages: next });
+      // Remove error messages after 5 seconds
+      const errTag = "⚠️";
+      setTimeout(() => {
+        setConvs(prev => {
+          const updated = prev.map(c => {
+            if (c.id !== activeId) return c;
+            const msgs = c.messages.filter(m => m.role === "user" || !m.content.includes(errTag));
+            return { ...c, messages: msgs };
+          });
+          return saveConvs(updated);
+        });
+      }, 5000);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -152,16 +176,13 @@ export function Chat() {
       {/* Sidebar overlay */}
       {showSidebar && (
         <div className="fixed inset-0 z-50 flex">
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowSidebar(false)} />
-
-          {/* Drawer */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSidebar(false)} />
           <div className="relative w-72 h-full flex flex-col z-10"
             style={{ background: "var(--surface)", borderRight: "1px solid var(--border)" }}>
             <div className="flex items-center justify-between px-4 py-3 safe-top"
               style={{ borderBottom: "1px solid var(--border)" }}>
               <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-3)" }}>
-                Conversations
+                Chats
               </span>
               <button onClick={() => setShowSidebar(false)} className="p-1">
                 <ChevronLeft size={16} style={{ color: "var(--text-3)" }} />
@@ -176,30 +197,37 @@ export function Chat() {
             </button>
 
             <div className="flex-1 overflow-y-auto no-scrollbar">
-              {convs.map(c => (
-                <button key={c.id} onClick={() => switchConv(c.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all active:opacity-60 group"
-                  style={{
-                    background: c.id === activeId ? "rgba(59,130,246,0.08)" : "transparent",
-                    borderBottom: "1px solid var(--border)",
-                  }}>
-                  <MessageSquare size={13} style={{ color: c.id === activeId ? "var(--accent)" : "var(--text-3)" }} className="shrink-0" />
-                  <span className="flex-1 text-xs truncate font-medium"
-                    style={{ color: c.id === activeId ? "var(--text-1)" : "var(--text-2)" }}>
-                    {c.name}
-                  </span>
-                  <X size={12} style={{ color: "var(--text-3)" }}
-                    className="opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
-                    onClick={(e) => deleteConv(c.id, e)} />
-                </button>
-              ))}
+              {convs.map(c => {
+                const p = PERSONAS.find(p => p.id === c.personaId) ?? PERSONAS[0];
+                return (
+                  <button key={c.id} onClick={() => switchConv(c.id)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all active:opacity-60 group"
+                    style={{
+                      background: c.id === activeId ? "rgba(59,130,246,0.08)" : "transparent",
+                      borderBottom: "1px solid var(--border)",
+                    }}>
+                    <MessageSquare size={13} style={{ color: c.id === activeId ? "var(--accent)" : "var(--text-3)" }} className="shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs truncate font-medium" style={{ color: c.id === activeId ? "var(--text-1)" : "var(--text-2)" }}>
+                        {c.name}
+                      </p>
+                      <p className="text-[10px]" style={{ color: "var(--text-3)" }}>
+                        {p.short} · {c.messages.length} msgs
+                      </p>
+                    </div>
+                    <X size={12} style={{ color: "var(--text-3)" }}
+                      className="opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                      onClick={(e) => deleteConv(c.id, e)} />
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {/* Subheader: persona + conv switcher */}
-      <div className="px-4 py-2 flex items-center justify-between shrink-0"
+      {/* Subheader */}
+      <div className="px-4 py-2.5 flex items-center justify-between shrink-0"
         style={{ borderBottom: "1px solid var(--border)" }}>
         <button onClick={() => setShowPersona(p => !p)} className="flex items-center gap-2 active:opacity-60">
           <StatusDot status="green" pulse />
@@ -210,7 +238,7 @@ export function Chat() {
             {activeConv?.messages.length ?? 0} msgs
           </span>
           <button onClick={() => setShowSidebar(true)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg active:opacity-60"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg active:opacity-60 transition-all"
             style={{ background: "var(--surface-2)", color: "var(--text-3)" }}>
             <MessageSquare size={12} />
             <span className="text-[10px] font-bold">{convs.length}</span>
@@ -229,8 +257,7 @@ export function Chat() {
                 border: persona.id === p.id ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent",
               }}>
               <StatusDot status={persona.id === p.id ? "green" : "gray"} />
-              <p className="text-xs font-bold"
-                style={{ color: persona.id === p.id ? "var(--accent)" : "var(--text-1)" }}>
+              <p className="text-xs font-bold" style={{ color: persona.id === p.id ? "var(--accent)" : "var(--text-1)" }}>
                 {p.name}
               </p>
             </button>
@@ -241,18 +268,15 @@ export function Chat() {
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
         {(activeConv?.messages.length ?? 0) === 0 && (
-          <div className="h-full flex flex-col items-center justify-center"
-            style={{ opacity: 0.15 }}>
+          <div className="h-full flex flex-col items-center justify-center" style={{ opacity: 0.15 }}>
             <Bot size={40} className="mb-3" />
-            <p className="text-[10px] font-bold uppercase tracking-widest">Ready</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest">Ready to connect</p>
           </div>
         )}
         {activeConv?.messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-              m.role === "user"
-                ? "text-white"
-                : ""
+              m.role === "user" ? "text-white" : ""
             }`}
               style={m.role === "user"
                 ? { background: "var(--accent)" }
@@ -277,7 +301,7 @@ export function Chat() {
         )}
       </div>
 
-      {/* Input */}
+      {/* Input — always visible above nav */}
       <div className="p-3 shrink-0 safe-bottom" style={{ borderTop: "1px solid var(--border)" }}>
         <div className="flex items-end gap-2 rounded-2xl px-4 py-3"
           style={{ background: "var(--surface-2)", border: "1px solid var(--border-s)" }}>
@@ -296,14 +320,16 @@ export function Chat() {
               t.style.height = Math.min(t.scrollHeight, 128) + "px";
             }}
           />
-          <button onClick={send} disabled={!input.trim() || loading}
-            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-30"
+          <button
+            onClick={send}
+            disabled={!input.trim() || loading}
+            className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
             style={{ background: "var(--accent)" }}>
-            <Send size={14} className="text-white" />
+            <Send size={15} className="text-white" />
           </button>
         </div>
         <p className="text-center mt-1.5 text-[10px]" style={{ color: "var(--text-3)" }}>
-          Enter to send · Shift+Enter for newline · {convs.length}/{MAX_CONVS} convs
+          Enter to send · Shift+Enter for newline · {convs.length}/{MAX_CONVS} chats
         </p>
       </div>
     </div>

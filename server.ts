@@ -161,7 +161,7 @@ app.get("/api/files/:path+", async (c) => {
 app.get("/api/calendar", async (c) => {
   const zoToken = process.env.ZO_CLIENT_IDENTITY_TOKEN;
   if (!zoToken || zoToken === "none") {
-    return c.json([{ id: "1", title: "Demo: Connect Google Calendar in Zo Settings", rawTime: "--:--", duration: "--", type: "system" }]);
+    return c.json([{ id: "1", title: "Connect Google Calendar in Zo Settings", rawTime: "--:--", duration: "--", type: "system" }]);
   }
   try {
     const res = await fetch("https://api.zo.computer/zo/ask", {
@@ -171,6 +171,21 @@ app.get("/api/calendar", async (c) => {
     });
     const data = await res.json();
     try { return c.json(JSON.parse(data.output || "[]")); } catch { return c.json([]); }
+  } catch { return c.json([]); }
+});
+
+app.get("/api/inbox", async (c) => {
+  const today = new Date().toISOString().split("T")[0];
+  const path = join(WORKSPACE, "MEMORY/inbox", `${today}.md`);
+  try {
+    const content = await readFile(path, "utf-8");
+    // Parse entries: split by "---" then extract **timestamp** — content pairs
+    const entries = content.split(/^---$/m).slice(1).map((block: string) => {
+      const match = block.match(/^\*\*([^*]+)\*\*\s*—?\s*(.+)/s);
+      if (!match) return null;
+      return { ts: match[1].trim(), content: match[2].trim() };
+    }).filter(Boolean);
+    return c.json(entries);
   } catch { return c.json([]); }
 });
 
