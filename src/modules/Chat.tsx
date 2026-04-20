@@ -143,10 +143,10 @@ export function Chat() {
 
     try {
       // Pass conversation_id so Zo continues the same thread
-      const res = await API.sendChat(userMsg, persona.id, activeConv.id);
+      const res = await API.sendChat(userMsg, persona.id);
+      // If Zo returns empty output, surface it as an error in chat
       if (!res.output || !res.output.trim()) {
-        toast.error("Zo returned an empty response — try again", { duration: 4000 });
-        return;
+        throw new Error("Empty response from Zo — try again");
       }
       const next: Message[] = [...messages, { role: "agent", content: res.output }];
       updateConv(activeId, { messages: next });
