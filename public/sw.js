@@ -1,61 +1,89 @@
-// NiamOS Service Worker v1.0
-const CACHE_NAME = 'niamos-v1';
-const STATIC_CACHE = 'niamos-static-v1';
-const STATIC_ASSETS = ['/', '/index.html', '/manifest.json'];
+// NiamOS Service Worker v2.0
+const SHELL_CACHE  = 'niamos-shell-v2';
+const API_CACHE    = 'niamos-api-v2';
+const KNOWN_CACHES = [SHELL_CACHE, API_CACHE];
 
+const SHELL_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+];
+
+// ── Install: pre-cache app shell ─────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(SHELL_CACHE)
+      .then(c => c.addAll(SHELL_ASSETS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
+// ── Activate: clean old caches ───────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter(n => n !== STATIC_CACHE).map(n => caches.delete(n)))
-    )
+    caches.keys()
+      .then(names => Promise.all(
+        names.filter(n => !KNOWN_CACHES.includes(n)).map(n => caches.delete(n))
+      ))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
+// ── Fetch ─────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  if (event.request.method !== 'GET') return;
 
-  // API: NetworkFirst with 5s timeout
+  // API: NetworkFirst → fallback to cache (enables offline read)
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetchWithTimeout(event.request, 5000)
-        .then(r => { if (r.ok) caches.open(CACHE_NAME).then(c => c.put(event.request, r.clone())); return r; })
+      fetchWithTimeout(event.request.clone(), 5000)
+        .then(r => {
+          if (r.ok) caches.open(API_CACHE).then(c => c.put(event.request, r.clone()));
+          return r;
+        })
         .catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // Static: StaleWhileRevalidate
+  // Static assets (/assets/*, icons): CacheFirst
+  if (url.pathname.startsWith('/assets/') || url.pathname.match(/\.(png|svg|ico|woff2?)$/)) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return fetch(event.request).then(r => {
+          if (r.ok) caches.open(SHELL_CACHE).then(c => c.put(event.request, r.clone()));
+          return r;
+        });
+      })
+    );
+    return;
+  }
+
+  // App shell (navigation): NetworkFirst → fallback to cached '/'
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      const fetchP = fetch(event.request).then(r => {
-        if (r.ok) caches.open(STATIC_CACHE).then(c => c.put(event.request, r.clone()));
+    fetch(event.request)
+      .then(r => {
+        if (r.ok) caches.open(SHELL_CACHE).then(c => c.put(event.request, r.clone()));
         return r;
-      }).catch(() => {});
-      return cached || fetchP;
-    })
+      })
+      .catch(() => caches.match(event.request) || caches.match('/'))
   );
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 async function fetchWithTimeout(req, ms) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
-  try { const r = await fetch(req, { signal: ctrl.signal }); clearTimeout(t); return r; }
-  catch (e) { clearTimeout(t); throw e; }
+  try {
+    const r = await fetch(req, { signal: ctrl.signal });
+    clearTimeout(t);
+    return r;
+  } catch (e) {
+    clearTimeout(t);
+    throw e;
+  }
 }
-
-// PWA install prompt
-let deferredPrompt;
-self.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  self.clients.matchAll().then(cs => cs.forEach(c => c.postMessage({ type: 'PWA_INSTALL_AVAILABLE' })));
-});
-self.addEventListener('appinstalled', () => { deferredPrompt = null; });

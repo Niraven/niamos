@@ -73,26 +73,57 @@ app.get("/api/memory/:path+", async (c) => {
   } catch { return c.json({ error: "File not found" }, 404); }
 });
 
+// ─── Agent time helpers ──────────────────────────────────────────────────────
+function getManilaMinutes(): number {
+  const now = new Date();
+  return ((now.getUTCHours() * 60 + now.getUTCMinutes()) + 8 * 60) % (24 * 60);
+}
+function parseTimeToMins(t: string): number {
+  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return 0;
+  let h = parseInt(m[1]); const min = parseInt(m[2]); const p = m[3].toUpperCase();
+  if (p === "PM" && h !== 12) h += 12;
+  if (p === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+function fmtCountdown(diff: number): string {
+  if (diff < 60) return `${diff}m`;
+  const h = Math.floor(diff / 60); const m = diff % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 app.get("/api/agents", async (c) => {
   try {
-    const memDir = join(WORKSPACE, "MEMORY");
-    const scheduled = [
-      { name: "Dawn Journal", time: "5:30 AM", status: "scheduled" },
-      { name: "Morning Brief", time: "7:00 AM", status: "scheduled" },
-      { name: "Pattern Scanner", time: "12:00 PM", status: "scheduled" },
-      { name: "Afternoon Pulse", time: "2:30 PM", status: "scheduled" },
-      { name: "Evening Sync", time: "9:00 PM", status: "scheduled" },
+    const SCHEDULE = [
+      { name: "Dawn Journal",    time: "5:30 AM"  },
+      { name: "Morning Brief",   time: "7:00 AM"  },
+      { name: "Pattern Scanner", time: "12:00 PM" },
+      { name: "Afternoon Pulse", time: "2:30 PM"  },
+      { name: "Evening Sync",    time: "9:00 PM"  },
     ];
-    let heartbeat = { status: "active", lastCycle: new Date().toISOString(), nextCycle: "" };
+    const nowMins = getManilaMinutes();
+    const withMins = SCHEDULE.map(a => ({ ...a, mins: parseTimeToMins(a.time) }));
+    const upcoming = withMins.filter(a => a.mins > nowMins);
+    const nextName = upcoming.length > 0 ? upcoming[0].name : null;
+    const scheduled = withMins.map(a => {
+      const done = a.mins <= nowMins;
+      const isNext = a.name === nextName;
+      return {
+        name: a.name,
+        time: isNext ? fmtCountdown(a.mins - nowMins) : a.time,
+        status: done ? "done" : isNext ? "next" : "upcoming",
+        lastRun: done ? `Today at ${a.time}` : undefined,
+      };
+    });
+    let heartbeat = { status: "active", lastCycle: "", nextCycle: "" };
     try {
-      const log = await readFile(join(memDir, "working/heartbeat-log.md"), "utf-8").catch(() => "");
+      const log = await readFile(join(WORKSPACE, "MEMORY/working/heartbeat-log.md"), "utf-8").catch(() => "");
       if (log) {
         const lines = log.split("\n").filter(Boolean);
-        const last = lines[lines.length - 1] || "";
-        heartbeat = { status: "active", lastCycle: last.slice(0, 25) || new Date().toISOString(), nextCycle: "" };
+        heartbeat.lastCycle = lines[lines.length - 1]?.slice(0, 50) || "";
       }
-    } catch { /* no heartbeat log */ }
-    return c.json({ scheduled, heartbeat, priorities: { p0: [], p1: [], p2: [] } });
+    } catch {}
+    return c.json({ scheduled, heartbeat });
   } catch { return c.json({ error: "Failed" }, 500); }
 });
 
@@ -146,10 +177,11 @@ app.get("/api/calendar", async (c) => {
 app.post("/api/capture", async (c) => {
   const { content } = await c.req.json();
   const date = new Date().toISOString().split("T")[0];
-  const path = join(WORKSPACE, "MEMORY/daily", `${date}.md`);
+  const path = join(WORKSPACE, "MEMORY/inbox", `${date}.md`);
   try {
     const existing = await readFile(path, "utf-8").catch(() => "");
-    const entry = `\n## Captured\n${content}\n`;
+    const ts = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", hour12: true, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const entry = `\n---\n**${ts}** — ${content}\n`;
     const { writeFile } = await import("fs/promises");
     await writeFile(path, existing + entry);
     return c.json({ success: true });
@@ -162,6 +194,18 @@ app.get("/api/context", async (c) => {
     const sess = await readFile(join(WORKSPACE, "MEMORY/working/session-state.md"), "utf-8").catch(() => "");
     return c.json({ activeContext: ctx, sessionState: sess, lastUpdated: new Date().toISOString() });
   } catch { return c.json({ activeContext: "", sessionState: "", lastUpdated: new Date().toISOString() }); }
+});
+
+app.get("/api/heartbeat", async (c) => {
+  try {
+    const log = await readFile(join(WORKSPACE, "MEMORY/working/heartbeat-log.md"), "utf-8").catch(() => "");
+    const lines = log.split("\n").filter(Boolean);
+    return c.json({
+      status: log ? "active" : "idle",
+      lastCycle: lines[lines.length - 1]?.slice(0, 80) || null,
+      totalCycles: lines.length,
+    });
+  } catch { return c.json({ status: "idle", lastCycle: null, totalCycles: 0 }); }
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
