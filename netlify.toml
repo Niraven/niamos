@@ -2,4 +2,4 @@ name = "niamos"
 publish = "dist"
 
 [build]
-command = "npm install && npm run build"
+command = "echo 'Build skipped - using pre-built files'"
