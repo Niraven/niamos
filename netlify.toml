@@ -1,6 +1,5 @@
-[build]
-  command = "npm run build"
-  publish = "dist"
+name = "niamos"
+publish = "dist"
 
-[build.environment]
-  NODE_VERSION = "20"
+[build]
+command = "npm install && npm run build"
