@@ -1,0 +1,21 @@
+{
+  "name": "NiamOS",
+  "short_name": "NiamOS",
+  "description": "Personal AI Command Interface — Your second brain, always with you.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "scope": "/",
+  "lang": "en-US",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable any" }
+  ],
+  "shortcuts": [
+    { "name": "Chat", "url": "/?tab=chat", "icons": [{ "src": "/icon-192.png" }] },
+    { "name": "Memory", "url": "/?tab=memory", "icons": [{ "src": "/icon-192.png" }] }
+  ]
+}
